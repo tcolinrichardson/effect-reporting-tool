@@ -1,0 +1,29 @@
+# Editor / IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS clutter
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Node (in case tooling is added later)
+node_modules/
+package-lock.json
+npm-debug.log*
+
+# Claude Code local tooling state
+.claude/
+
+# EA proprietary assets (licensed fonts + branding reference).
+# These are excluded from the public repo for licensing reasons.
+# EA staff have the files locally; the app degrades gracefully without them.
+css/ea-fonts.css
+meta-analysis-calculator.html
+
+# Working-directory artifacts (not meant for source control)
+archive/
+temp-*.txt
+*.log

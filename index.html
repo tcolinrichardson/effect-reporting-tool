@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bayesian effect reporting tool</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&family=Roboto+Condensed:wght@300;400;500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+<main>
+  <header>
+    <div class="header-logo">
+      <img src="data:image/png;base64,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" alt="Evidence Action">
+    </div>
+    <div class="header-text">
+      <h1>Effect Reporting Tool</h1>
+      <p>Layered evidence summary for study reporting</p>
+    </div>
+  </header>
+
+  <section class="controls">
+    <div class="scale-section">
+      <span class="scale-label">Effect-size scale</span>
+      <div class="scale-toggle" role="radiogroup" aria-label="Effect-size scale">
+        <button type="button" id="scale-linear" class="mode-btn" aria-pressed="false">Linear</button>
+        <button type="button" id="scale-rr" class="mode-btn is-active" aria-pressed="true">Risk ratio</button>
+      </div>
+    </div>
+
+    <div class="control">
+      <label class="control-label" for="beta-num"><span class="name" id="beta-name">RR</span> <span id="beta-sublabel">risk ratio</span></label>
+      <div class="control-row">
+        <input type="range" id="beta" min="0.3" max="4" step="0.05" value="0.7">
+        <input type="number" class="control-num" id="beta-num" step="any" value="0.7">
+      </div>
+    </div>
+
+    <div class="control">
+      <div class="control-label control-label-mode">
+        <div class="mode-toggle" role="radiogroup" aria-label="SE or CI input">
+          <button type="button" id="mode-se" class="mode-btn is-active" aria-pressed="true">SE</button>
+          <button type="button" id="mode-ci" class="mode-btn" aria-pressed="false">95% CI</button>
+        </div>
+        <span class="mode-sublabel" id="mode-sublabel">log SE (of log RR)</span>
+      </div>
+      <div class="control-row" id="se-row">
+        <input type="range" id="se" min="0.05" max="1" step="0.05" value="0.15">
+        <input type="number" class="control-num" id="se-num" step="any" min="0" value="0.15">
+      </div>
+      <div class="control-row" id="ci-row" hidden>
+        <span class="ci-sublabel">low</span>
+        <input type="number" class="control-num ci-num" id="ci-low-num" step="any" value="0.52">
+        <span class="ci-sublabel">high</span>
+        <input type="number" class="control-num ci-num" id="ci-high-num" step="any" value="0.94">
+      </div>
+    </div>
+
+    <div class="control">
+      <label class="control-label" for="mid-num"><span class="name" id="mid-name">MID</span> <span id="mid-sublabel">minimum important RR</span></label>
+      <div class="control-row">
+        <input type="range" id="mid" min="0.3" max="3" step="0.05" value="0.8">
+        <input type="number" class="control-num" id="mid-num" step="any" min="0" value="0.8">
+      </div>
+    </div>
+  </section>
+
+  <section class="estimate-section">
+    <table class="estimate-table">
+      <caption>Study Estimate Table</caption>
+      <thead><tr><th>Metric</th><th>Value</th></tr></thead>
+      <tbody id="estimate-table-body"></tbody>
+    </table>
+    <div class="export-buttons">
+      <button id="btn-copy" type="button">Copy table</button>
+      <button id="btn-csv" type="button">Download CSV</button>
+      <button id="btn-png" type="button">Download report (PNG)</button>
+    </div>
+  </section>
+
+  <div class="plot-container">
+    <svg id="plot" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 340" role="img" aria-label="Posterior density with shaded probability regions"></svg>
+  </div>
+
+  <div class="legend">
+    <span class="legend-item"><span class="legend-swatch" style="background: #d5f4f7;"></span><span id="legend-p-zero">P(RR &lt; 1)</span></span>
+    <span class="legend-item"><span class="legend-swatch" style="background: #05545a;"></span><span id="legend-p-mid">P(RR &lt; MID)</span></span>
+    <span class="legend-item"><span class="legend-line" style="border-top-color: #20253a;"></span><span id="legend-zero-line">RR = 1</span></span>
+    <span class="legend-item"><span class="legend-line" style="border-top-color: #e600a0;"></span>MID</span>
+  </div>
+
+  <div class="axis-toggle-row" id="axis-toggle-row">
+    <span class="axis-toggle-label">Density on:</span>
+    <div class="mode-toggle" role="radiogroup" aria-label="Axis scale">
+      <button type="button" id="axis-log" class="mode-btn is-active" aria-pressed="true">Log scale (Normal)</button>
+      <button type="button" id="axis-rr" class="mode-btn" aria-pressed="false">RR scale (log-normal)</button>
+    </div>
+  </div>
+
+  <section class="confidence-section">
+    <h2 class="confidence-heading">Confidence distribution</h2>
+    <p class="confidence-blurb">The same information shown above, framed as confidence statements rather than posterior probabilities. Under Gaussian likelihood with no prior assumptions, the two framings yield identical numbers — see "Note on equivalence" in the Details panel.</p>
+
+    <div class="plot-container">
+      <svg id="confidence-dist-plot" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 340" role="img" aria-label="Confidence distribution H(θ)"></svg>
+    </div>
+    <p class="plot-caption">Confidence distribution H(θ): the confidence that the true parameter is below the value on the x-axis. Crossings at 2.5% and 97.5% give the 95% CI bounds.</p>
+
+    <div class="plot-container">
+      <svg id="confidence-curve-plot" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 340" role="img" aria-label="Confidence curve c(θ)"></svg>
+    </div>
+    <p class="plot-caption">Confidence curve c(θ) = 2·min(H(θ), 1−H(θ)). Equivalent to a p-value function for testing H<sub>0</sub>: θ = value. Horizontal slice at c = 0.05 gives the 95% CI; c = 0.50 gives the 50% CI.</p>
+  </section>
+
+  <section class="prior-section">
+    <h2 class="prior-heading">Prior sensitivity</h2>
+    <p class="prior-blurb">How conclusions shift across priors with different degrees of skepticism. The flat prior is mathematically equivalent to the frequentist analysis above; the skeptical priors pull the posterior toward zero (no effect).</p>
+
+    <div class="prior-selector" role="group" aria-label="Priors to include">
+      <label class="prior-check"><input type="checkbox" id="prior-flat" value="flat" checked> <span>Flat</span></label>
+      <label class="prior-check"><input type="checkbox" id="prior-gelman" value="gelman"> <span>Gelman default</span></label>
+      <label class="prior-check"><input type="checkbox" id="prior-weak" value="weak"> <span>Weakly informative</span></label>
+      <label class="prior-check"><input type="checkbox" id="prior-moderate" value="moderate" checked> <span>Moderately skeptical</span></label>
+    </div>
+
+    <div class="prior-table-wrapper">
+      <table class="prior-table">
+        <thead>
+          <tr>
+            <th>Prior</th>
+            <th>Prior SD</th>
+            <th>Posterior</th>
+            <th>95% CrI</th>
+            <th id="prior-th-pzero">P(RR &lt; 1)</th>
+            <th id="prior-th-pmid">P(RR &lt; MID)</th>
+          </tr>
+        </thead>
+        <tbody id="prior-table-body"></tbody>
+      </table>
+    </div>
+
+    <div class="export-buttons">
+      <button id="btn-prior-copy" type="button">Copy prior table</button>
+      <button id="btn-prior-csv" type="button">Download CSV</button>
+      <button id="btn-prior-png" type="button">Download report (PNG)</button>
+    </div>
+
+    <div class="plot-container">
+      <svg id="prior-plot" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 340" role="img" aria-label="Posterior densities under multiple priors"></svg>
+    </div>
+
+    <div class="legend prior-plot-legend" id="prior-plot-legend"></div>
+  </section>
+
+  <details>
+    <summary>Details</summary>
+    <div class="details-content">
+      <section class="details-section">
+        <h3 class="details-heading">Formulas reference</h3>
+        <div class="formulas">
+          <div class="formula"><strong>Likelihood:</strong> β̂ ~ Normal(θ, SE²) on the analysis scale (log RR for risk-ratio mode)</div>
+          <div class="formula"><strong>Prior:</strong> θ ~ Normal(0, τ²), where τ → ∞ approximates flat</div>
+          <div class="formula"><strong>Posterior:</strong> θ | data ~ Normal(μ<sub>post</sub>, σ²<sub>post</sub>)</div>
+          <div class="formula" style="padding-left: 1.25rem;">with <code>σ²_post = 1 / (1/τ² + 1/SE²)</code> and <code>μ_post = σ²_post · (β̂ / SE²)</code></div>
+          <div class="formula"><strong>P(θ &gt; t):</strong> 1 − Φ((t − μ<sub>post</sub>) / σ<sub>post</sub>)</div>
+          <div class="formula"><strong>CI ↔ SE:</strong> <code>SE = (CI<sub>high</sub> − CI<sub>low</sub>) / 3.92</code> on the analysis scale; for RR work, take <code>log</code> of CI bounds first</div>
+          <div class="formula" style="margin-top: 1rem; color: var(--ink-muted);">Under a flat prior, posterior mean = β̂ and posterior SD = SE, so credible interval = confidence interval and P(θ &gt; 0) = 1 − (one-sided p-value).</div>
+        </div>
+      </section>
+
+      <section class="details-section">
+        <h3 class="details-heading">Confidence statements</h3>
+        <div class="details-prose">
+          <p>These are not probability statements about RR in the Bayesian sense — they are frequency properties of the inference procedure.</p>
+          <p><strong>Specifically:</strong> "confidence that RR &lt; x is C%" means that across the class of inference procedures generated by the confidence distribution, C% confidence intervals (at the appropriate one-sided levels) would have their entire range below x when this is the true configuration.</p>
+          <p><strong>For example:</strong> "confidence that RR &lt; 1 is 99.3%" means that 99.3% confidence intervals constructed via this procedure would have their full range below RR = 1 when the true RR &lt; 1.</p>
+          <p>This is a statement about repeated sampling and the long-run frequency properties of the inference method, not about our degree of belief that the parameter takes a particular value.</p>
+        </div>
+      </section>
+
+      <section class="details-section">
+        <h3 class="details-heading">Note on equivalence</h3>
+        <div class="details-prose">
+          <p>The probabilities reported here are posterior probabilities under a flat (uniform) prior. Under Gaussian likelihood, these are mathematically equivalent to standard frequentist quantities — specifically, P(θ &gt; MID | D) = 1 − (one-sided p-value testing H<sub>0</sub>: θ = MID), and the credible interval coincides with the standard confidence interval.</p>
+          <p>We use Bayesian framing for the clarity of probability statements about the parameter, not because we are incorporating prior information. The same numbers can be presented as confidence distribution values (as shown above) without invoking any Bayesian interpretation. The framework does not require a Bayesian commitment; both traditions yield identical outputs here. Readers can choose the interpretation they find most useful.</p>
+        </div>
+      </section>
+
+      <section class="details-section">
+        <h3 class="details-heading">Scope of analysis</h3>
+        <div class="details-prose">
+          <p><strong>What this analysis includes:</strong> a summary of what the observed data alone imply about the parameter, given the Gaussian-likelihood assumption. The reported probabilities reflect the precision of this study and the location of the point estimate; they do not depend on a choice of skeptical or informative prior.</p>
+          <p><strong>What this analysis does not include:</strong> external information such as prior literature on similar interventions, publication bias, winner's curse adjustments, replication base rates, or domain-specific effect-size distributions. These considerations are important for overall evidence assessment but are addressed separately in our review process.</p>
+          <p>The numbers above should be interpreted as <em>"what the data say"</em> rather than <em>"what we should believe about the intervention,"</em> which requires integrating this with external evidence.</p>
+        </div>
+      </section>
+    </div>
+  </details>
+</main>
+
+<script type="module" src="js/ui.js"></script>
+</body>
+</html>
