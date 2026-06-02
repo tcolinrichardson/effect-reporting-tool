@@ -27,3 +27,8 @@ meta-analysis-calculator.html
 archive/
 temp-*.txt
 *.log
+
+# Embedded clone of this repo (likely accidental — created by
+# `git clone` without a destination). Excluded so the outer repo
+# doesn't try to track an inner repo's contents.
+effect-reporting-tool/
