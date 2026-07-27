@@ -50,11 +50,11 @@
         <input type="range" id="se" min="0.05" max="1" step="0.05" value="0.15">
         <input type="number" class="control-num" id="se-num" step="any" min="0" value="0.15">
       </div>
-      <div class="control-row" id="ci-row" hidden>
+      <div class="control-row" id="ci-row">
         <span class="ci-sublabel">low</span>
-        <input type="number" class="control-num ci-num" id="ci-low-num" step="any" value="0.52">
+        <input type="number" class="control-num ci-num" id="ci-low-num" step="any" value="0.52" disabled>
         <span class="ci-sublabel">high</span>
-        <input type="number" class="control-num ci-num" id="ci-high-num" step="any" value="0.94">
+        <input type="number" class="control-num ci-num" id="ci-high-num" step="any" value="0.94" disabled>
       </div>
     </div>
 
@@ -64,6 +64,7 @@
         <input type="range" id="mid" min="0.3" max="3" step="0.05" value="0.8">
         <input type="number" class="control-num" id="mid-num" step="any" min="0" value="0.8">
       </div>
+      <label class="mid-toggle-label"><input type="checkbox" id="show-mid" checked> Show MID line on plot</label>
     </div>
   </section>
 
@@ -85,7 +86,7 @@
   </div>
 
   <div class="legend">
-    <span class="legend-item"><span class="legend-swatch" style="background: #d5f4f7;"></span><span id="legend-p-zero">P(RR &lt; 1)</span></span>
+    <span class="legend-item"><span class="legend-swatch" style="background: #9fdfe6;"></span><span id="legend-p-zero">P(RR &lt; 1)</span></span>
     <span class="legend-item"><span class="legend-swatch" style="background: #05545a;"></span><span id="legend-p-mid">P(RR &lt; MID)</span></span>
     <span class="legend-item"><span class="legend-line" style="border-top-color: #20253a;"></span><span id="legend-zero-line">RR = 1</span></span>
     <span class="legend-item"><span class="legend-line" style="border-top-color: #e600a0;"></span>MID</span>
@@ -98,6 +99,14 @@
       <button type="button" id="axis-rr" class="mode-btn" aria-pressed="false">RR scale (log-normal)</button>
     </div>
   </div>
+
+  <section class="alt-framings-section">
+    <table class="estimate-table alt-framings-table">
+      <caption>Alternative framings <span class="alt-framings-caption-sub">— same threshold questions in four framework vocabularies</span></caption>
+      <thead><tr><th>Metric</th><th>Value</th></tr></thead>
+      <tbody id="alt-framings-body"></tbody>
+    </table>
+  </section>
 
   <section class="confidence-section">
     <h2 class="confidence-heading">Confidence distribution</h2>
@@ -112,6 +121,33 @@
       <svg id="confidence-curve-plot" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 340" role="img" aria-label="Confidence curve c(θ)"></svg>
     </div>
     <p class="plot-caption">Confidence curve c(θ) = 2·min(H(θ), 1−H(θ)). Equivalent to a p-value function for testing H<sub>0</sub>: θ = value. Horizontal slice at c = 0.05 gives the 95% CI; c = 0.50 gives the 50% CI.</p>
+  </section>
+
+  <section class="framework-section" id="compat-section">
+    <h2 class="framework-heading">Compatibility curve</h2>
+    <p class="framework-blurb">Point-wise compatibility (two-sided p-values) at each candidate value of the true effect, plus nested compatibility intervals at standard levels. Compatibility framing does not aggregate into cumulative probabilities — read it as "which values are consistent with the data, and at what level of consistency."</p>
+    <dl class="framework-readouts" id="compat-readouts"></dl>
+    <div class="plot-container">
+      <svg id="compat-plot" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 360" role="img" aria-label="Compatibility curve with nested CI bands"></svg>
+    </div>
+  </section>
+
+  <section class="framework-section" id="bootstrap-section">
+    <h2 class="framework-heading">Bootstrap</h2>
+    <p class="framework-blurb">Distribution of the estimator across many resamples, framed as the long-run sampling behavior of the procedure. Under Gaussian likelihood we simulate parametrically from Normal(β̂, SE²) — numerically equivalent to nonparametric bootstrap on the original data, which we don't have access to.</p>
+    <dl class="framework-readouts" id="bootstrap-readouts"></dl>
+    <div class="plot-container">
+      <svg id="bootstrap-plot" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 340" role="img" aria-label="Bootstrap histogram of 10,000 simulated draws"></svg>
+    </div>
+  </section>
+
+  <section class="framework-section" id="likelihood-section">
+    <h2 class="framework-heading">Likelihood inference</h2>
+    <p class="framework-blurb">Relative support for each candidate value of the true effect. Likelihood ratios compare how strongly the data support one value over another; support intervals show the range of values within a given evidence threshold of the MLE.</p>
+    <dl class="framework-readouts" id="likelihood-readouts"></dl>
+    <div class="plot-container">
+      <svg id="likelihood-plot" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 340" role="img" aria-label="Likelihood function with 1/8 and 1/32 support references"></svg>
+    </div>
   </section>
 
   <section class="prior-section">
@@ -167,44 +203,38 @@
             <th>Plain-language summary</th>
             <th>What it produces</th>
             <th>What you can correctly say</th>
-            <th>What you can't say</th>
           </tr>
         </thead>
         <tbody>
           <tr>
             <th scope="row">Bayesian (flat prior)</th>
-            <td>We treat the true effect as unknown but having a probability distribution. The data update that distribution. With a flat starting belief (any value is initially equally likely), the result is a probability distribution over possible true effects, centered on our estimate. From this distribution, we can read off the probability that the true effect falls in any range.</td>
-            <td>A posterior distribution over θ representing degrees of belief about the parameter, given the data and the prior. Under flat prior, posterior = Normal(β̂, SE²).</td>
-            <td>"There is a 99.3% posterior probability that the true RR is below 1." "The 95% credible interval is [0.22, 0.84]." "The posterior mean is 0.43."</td>
-            <td>Don't claim this is purely "what the data say" — the flat prior is a substantive assumption that all parameter values are equally plausible a priori. Don't claim the posterior incorporates external knowledge unless you've used an informative prior.</td>
+            <td>We treat the true effect as unknown but having a probability distribution. The data update that distribution. The result is a probability distribution over possible true effects, centered on our estimate. From this distribution, we can read off the probability that the true effect falls in any range.</td>
+            <td><span class="framework-cell-header">Probability statements about θ</span>A posterior distribution over θ representing degrees of belief about the parameter, given the data and the prior. Under flat prior, posterior = Normal(β̂, SE²).</td>
+            <td>"There is a 99.3% posterior probability that the true RR is below 1."</td>
           </tr>
           <tr>
             <th scope="row">Confidence distribution</th>
-            <td>We construct a distribution-valued object that summarizes how the inference procedure behaves. Reading off this object tells us at what confidence level any range of values would have been asserted by the procedure. This is a statement about the procedure's long-run behavior, not a Bayesian belief about the parameter.</td>
-            <td>A distribution-valued frequentist object H(θ) whose value at θ₀ gives the confidence that θ &lt; θ₀. Frequency property of the inference procedure.</td>
-            <td>"Confidence that RR &lt; 1 is 99.3%." Interpretation: across the class of inference procedures generated by this CD, 99.3% confidence intervals at the appropriate one-sided level would have their full range below 1 when this is the true configuration. "The 95% confidence interval is [0.22, 0.84]."</td>
-            <td>Don't claim this is a Bayesian probability statement about RR. Don't import Bayesian language ("probable," "credible") — strictly, this is a frequency claim about the procedure, not a belief about the parameter.</td>
+            <td>For every possible true effect value, we ask what confidence level the procedure would assign. The result is a distribution describing the procedure's behavior, not a probability about the parameter itself.<br><br>The confidence distribution turns confidence intervals into a continuous summary: it shows what confidence level corresponds to every possible range of values. The numbers describe how often the procedure would correctly capture the true effect, not what we believe about that effect.</td>
+            <td><span class="framework-cell-header">Frequency statements about the inference procedure</span>A summary of how the inference procedure behaves: for any value you pick, it tells you the confidence level at which the procedure would rule that value out as an upper bound. The output looks like a distribution but describes the procedure's track record across repeated samples — not a probability about the true parameter.</td>
+            <td>"Confidence that RR &lt; 1 is 99.3%." This describes how reliable the procedure is at ruling out RR ≥ 1 — across repeated applications, the procedure would correctly conclude RR &lt; 1 at the 99.3% confidence level. The number is about the procedure's track record, not the probability of any specific value.</td>
           </tr>
           <tr>
             <th scope="row">Compatibility curve</th>
             <td>For every candidate value of the true effect, we ask how compatible that specific value is with the observed data (using a p-value or related measure). The result is a curve showing compatibility at every point in the parameter space. It tells us which values are well-supported and which are inconsistent, but it doesn't aggregate into a single probability over ranges.</td>
-            <td>A function p(θ₀) showing the two-sided p-value testing each candidate value θ₀. Compatibility at each point in parameter space; no cumulative interpretation.</td>
-            <td>"The compatibility of RR = 1 with the data is p = 0.014 (s ≈ 6.2 bits against this null)." "The 95% compatibility interval is [0.22, 0.84]." "RR values outside [0.22, 0.84] are inconsistent with the data at the 5% compatibility level." "RR = 0.43 is the value most compatible with the data."</td>
-            <td>Don't claim cumulative probabilities like "P(RR &lt; 1)." Don't compute or report area under the curve as if it were a probability mass. The framework is about compatibility at individual values, not over ranges.</td>
+            <td><span class="framework-cell-header">Compatibility at each θ value</span>A function p(θ₀) showing the two-sided p-value testing each candidate value θ₀. Compatibility at each point in parameter space; no cumulative interpretation.</td>
+            <td>"The compatibility of RR = 1 with the data is p = 0.014 (s ≈ 6.2 bits against this null)." "RR = 0.43 is the value most compatible with the data."</td>
           </tr>
           <tr>
             <th scope="row">Bootstrap</th>
             <td>We resample the original data many times (with replacement) and recompute the estimate from each resample. The collection of resampled estimates shows how the estimate might vary from sample to sample. From this collection we can compute summaries: standard error, percentile intervals, and the proportion of resampled estimates beyond any threshold.</td>
-            <td>The empirical distribution of β̂* across many resamples (with replacement) of the original data. Approximates the sampling distribution of the estimator.</td>
-            <td>"Across 10,000 bootstrap resamples, 99.3% had estimates below 1." "The 95% bootstrap percentile interval is [0.22, 0.84]." "The bootstrap standard error of RR̂ is 0.34 (on the log scale)."</td>
-            <td>Don't claim the bootstrap distribution is the posterior over θ — it's the sampling distribution of the estimator. Don't claim bootstrap percentiles are Bayesian probability statements about the parameter. Don't use bootstrap when the estimator is non-smooth, near a boundary, or for small samples without specific bootstrap corrections.</td>
+            <td><span class="framework-cell-header">Resampling-based sampling distribution</span>The empirical distribution of β̂* across many resamples (with replacement) of the original data. Approximates the sampling distribution of the estimator.</td>
+            <td>"Across 10,000 bootstrap resamples, 99.3% had estimates below 1."</td>
           </tr>
           <tr>
             <th scope="row">Likelihood inference</th>
             <td>We compute the likelihood function: how well each possible true value explains the observed data. The value that best explains the data is the maximum likelihood estimate; nearby values are nearly as well supported; distant values are progressively less supported. We can directly compare how much better one value is supported than another, using likelihood ratios.</td>
-            <td>The likelihood function L(θ | data) plotted over the parameter space. Relative support for each value of θ, with the MLE being the value with maximum support.</td>
+            <td><span class="framework-cell-header">Relative support across θ values</span>The likelihood function L(θ | data) plotted over the parameter space. Relative support for each value of θ, with the MLE being the value with maximum support.</td>
             <td>"The data most strongly support RR = 0.43 (the MLE)." "Values of RR outside [0.22, 0.84] are at least 8 times less supported than the MLE (1/8 support interval)." "The data support RR = 0.43 over RR = 1 by a likelihood ratio of approximately 21:1."</td>
-            <td>Don't claim posterior probabilities — likelihood inference doesn't normalize the likelihood into a probability distribution. Don't claim confidence or compatibility statements without invoking sampling-distribution machinery. Don't treat the integral over the likelihood as a probability.</td>
           </tr>
         </tbody>
       </table>

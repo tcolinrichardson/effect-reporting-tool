@@ -1,9 +1,21 @@
-import { computePosterior, computeFrequentist, ncdf, tailProb, Z_95 } from './stats.js';
+import {
+  computePosterior,
+  computeFrequentist,
+  ncdf,
+  tailProb,
+  Z_95,
+  compatibilityCurveOutputs,
+  bootstrapOutputs,
+  likelihoodOutputs,
+} from './stats.js';
 import {
   drawPlot,
   drawMultiPlot,
   drawConfidenceDistribution,
   drawConfidenceCurve,
+  drawCompatibilityCurve,
+  drawBootstrap,
+  drawLikelihood,
   PRIOR_COLORS,
 } from './plotting.js';
 import {
@@ -17,6 +29,22 @@ import {
 const fmt = (n, d) => n.toFixed(d);
 const fmtP = p => p < 0.001 ? '<0.001' : p > 0.999 ? '>0.999' : p.toFixed(3);
 const fmtNeg = n => n < 0 ? '−' + Math.abs(n).toFixed(2) : n.toFixed(2);
+
+// Percent: 0.991 → "99.1%"; 0.0012 → "0.1%"; clamps to 0 / 100.
+const fmtPct = p => (100 * p).toFixed(1) + '%';
+
+// Likelihood ratio as "1 : N" — data favor MLE over reference by N to 1.
+// LR > 1 never happens at reference points (MLE is the max by definition);
+// LR ≈ 1 displayed as "~ 1 : 1".
+const fmtLR = lr => {
+  if (!Number.isFinite(lr) || lr <= 0) return '—';
+  if (lr >= 0.999) return '~ 1 : 1';
+  const n = 1 / lr;
+  return '1 : ' + (n >= 100 ? Math.round(n) : n.toFixed(1));
+};
+
+// s-value (Shannon surprisal in bits): "6.2 bits against".
+const fmtSValue = s => Number.isFinite(s) ? s.toFixed(1) + ' bits' : '—';
 
 const REPORT_TITLE = 'Study Estimate Table';
 const PRIOR_REPORT_TITLE = 'Prior Sensitivity';
@@ -88,6 +116,7 @@ const SCALES = {
 // ──────────────────────────────────────────────────────────────────────────
 const plotEl = document.getElementById('plot');
 const tableBodyEl = document.getElementById('estimate-table-body');
+const altFramingsBodyEl = document.getElementById('alt-framings-body');
 
 const betaSlider = document.getElementById('beta');
 const betaNum = document.getElementById('beta-num');
@@ -98,8 +127,6 @@ const midNum = document.getElementById('mid-num');
 
 const ciLowNum = document.getElementById('ci-low-num');
 const ciHighNum = document.getElementById('ci-high-num');
-const seRow = document.getElementById('se-row');
-const ciRow = document.getElementById('ci-row');
 const modeSeBtn = document.getElementById('mode-se');
 const modeCiBtn = document.getElementById('mode-ci');
 const modeSublabel = document.getElementById('mode-sublabel');
@@ -127,14 +154,25 @@ const confCurvePlotEl = document.getElementById('confidence-curve-plot');
 const axisToggleRow = document.getElementById('axis-toggle-row');
 const axisLogBtn = document.getElementById('axis-log');
 const axisRRBtn = document.getElementById('axis-rr');
+const showMidEl = document.getElementById('show-mid');
+
+// Extended frameworks (Compatibility / Bootstrap / Likelihood) — always visible
+const compatReadoutsEl = document.getElementById('compat-readouts');
+const bootstrapReadoutsEl = document.getElementById('bootstrap-readouts');
+const likelihoodReadoutsEl = document.getElementById('likelihood-readouts');
+const compatPlotEl = document.getElementById('compat-plot');
+const bootstrapPlotEl = document.getElementById('bootstrap-plot');
+const likelihoodPlotEl = document.getElementById('likelihood-plot');
 
 // ──────────────────────────────────────────────────────────────────────────
 // STATE
 // ──────────────────────────────────────────────────────────────────────────
 let scale = 'rr';
 let axisScale = 'log';               // 'log' | 'rr' — only relevant in RR mode
+let showMid = true;                  // whether to draw the MID line on the main posterior plot
 let inputMode = 'se';
-let currentTableData = [];           // [{label, value}, …] for upper section
+let currentTableData = [];           // [{label, value}, …] for upper Study Estimate Table (6 Bayesian core rows)
+let currentAltFramingsData = [];     // [{label, value}, …] for the "Alternative framings" table below the main plot
 let currentMultiPriorData = [];      // [[col0, col1, …], …] for prior section
 const selectedPriors = new Set(['flat', 'moderate']);
 
@@ -304,6 +342,7 @@ function setAxisScale(newAxisScale) {
 
 axisLogBtn.addEventListener('click', () => setAxisScale('log'));
 axisRRBtn.addEventListener('click', () => setAxisScale('rr'));
+showMidEl.addEventListener('change', () => { showMid = showMidEl.checked; update(); });
 
 scaleLinearBtn.addEventListener('click', () => { if (scale !== 'linear') applyScale('linear'); });
 scaleRRBtn.addEventListener('click',     () => { if (scale !== 'rr')     applyScale('rr');     });
@@ -323,8 +362,11 @@ function setInputMode(mode) {
       ciLowNum.value = s.toUserScale(beta_internal - Z_95 * se).toFixed(3);
       ciHighNum.value = s.toUserScale(beta_internal + Z_95 * se).toFixed(3);
     }
-    seRow.hidden = true;
-    ciRow.hidden = false;
+    // Both control rows stay visible; only the inactive set is disabled.
+    seSlider.disabled = true;
+    seNum.disabled = true;
+    ciLowNum.disabled = false;
+    ciHighNum.disabled = false;
     modeSublabel.textContent = s.ciModeSublabel;
   } else {
     const lo_user = parseFloat(ciLowNum.value);
@@ -338,8 +380,10 @@ function setInputMode(mode) {
         seSlider.value = derivedSE;
       }
     }
-    seRow.hidden = false;
-    ciRow.hidden = true;
+    seSlider.disabled = false;
+    seNum.disabled = false;
+    ciLowNum.disabled = true;
+    ciHighNum.disabled = true;
     modeSublabel.textContent = s.seModeSublabel;
   }
 
@@ -380,7 +424,10 @@ function readSE() {
 // ──────────────────────────────────────────────────────────────────────────
 // UPPER (SINGLE-PRIOR) TABLE
 // ──────────────────────────────────────────────────────────────────────────
-function buildTableData({ beta_user, se, freq, ciLow_user, ciHigh_user, labels, dirLabels, pZero, pMID, confLabels, formatV }) {
+// Upper Study Estimate Table — Bayesian flat-prior core analysis only (6 rows).
+// The alternative-framings restatements (CD, Compatibility, Bootstrap, Likelihood)
+// live in a separate table below the main plot via buildAlternativeFramingsRows.
+function buildTableData({ beta_user, se, freq, ciLow_user, ciHigh_user, labels, dirLabels, pZero, pMID, formatV }) {
   return [
     { label: labels.pointEstimate, value: formatV(beta_user) },
     { label: labels.standardError, value: se.toFixed(3) },
@@ -388,14 +435,17 @@ function buildTableData({ beta_user, se, freq, ciLow_user, ciHigh_user, labels, 
     { label: labels.ci,            value: '[' + formatV(ciLow_user) + ', ' + formatV(ciHigh_user) + ']' },
     { label: dirLabels.pZero,      value: fmt(pZero, 3) },
     { label: dirLabels.pMID,       value: fmt(pMID, 3) },
-    // Same numbers, frequentist labeling — see "Note on equivalence" in Details.
-    { label: confLabels.cZero,     value: fmt(pZero, 3) },
-    { label: confLabels.cMID,      value: fmt(pMID, 3) },
   ];
 }
 
 function renderTable(rows) {
   tableBodyEl.innerHTML = rows
+    .map(r => `<tr><td>${r.label}</td><td>${r.value}</td></tr>`)
+    .join('');
+}
+
+function renderAltFramingsTable(rows) {
+  altFramingsBodyEl.innerHTML = rows
     .map(r => `<tr><td>${r.label}</td><td>${r.value}</td></tr>`)
     .join('');
 }
@@ -465,6 +515,133 @@ function renderPriorPlotLegend(priorPosteriors) {
 }
 
 // ──────────────────────────────────────────────────────────────────────────
+// EXTENDED FRAMEWORK SECTIONS (Compatibility / Bootstrap / Likelihood)
+// ──────────────────────────────────────────────────────────────────────────
+// Render helpers below are the single point where framework-license
+// discipline lives: each section must use framework-appropriate phrasing
+// (compatibility / bootstrap / likelihood) and AVOID importing language
+// from sibling frameworks (probability / confidence / credible). See
+// FRAMEWORKS_TABLE.md for what each framework licenses.
+
+// Helper: format an internal-scale interval as a user-scale "[lo, hi]" string.
+function fmtIntervalUser(intervalInternal, s) {
+  const [lo, hi] = intervalInternal;
+  return '[' + s.formatUserValue(s.toUserScale(lo)) + ', ' + s.formatUserValue(s.toUserScale(hi)) + ']';
+}
+
+function renderCompatibilityReadouts(outputs, s, midUserVal) {
+  const userLabel = scale === 'rr' ? 'RR' : 'θ';
+  const nullLabel = scale === 'rr' ? 'RR = 1' : 'θ = 0';
+  const midLabel = `${userLabel} = ${s.formatUserValue(midUserVal)}`;
+  const mostCompatUser = s.toUserScale(outputs.most_compatible_value);
+
+  let html = '';
+  html += '<dt class="readout-group-label">Most compatible value</dt><dd></dd>';
+  html += `<dt>${userLabel}</dt><dd>${s.formatUserValue(mostCompatUser)}</dd>`;
+
+  html += '<dt class="readout-group-label">Point-wise compatibility</dt><dd></dd>';
+  html += `<dt>at ${nullLabel}</dt><dd>p = ${fmtP(outputs.compatibility_at_null)} &nbsp; (s ≈ ${fmtSValue(outputs.s_value_null)} against)</dd>`;
+  html += `<dt>at MID (${midLabel})</dt><dd>p = ${fmtP(outputs.compatibility_at_mid)} &nbsp; (s ≈ ${fmtSValue(outputs.s_value_mid)} against)</dd>`;
+
+  html += '<dt class="readout-group-label">Nested compatibility intervals</dt><dd></dd>';
+  for (const level of [50, 80, 95, 99]) {
+    html += `<dt>${level}%</dt><dd>${fmtIntervalUser(outputs.compatibility_intervals[level], s)}</dd>`;
+  }
+
+  compatReadoutsEl.innerHTML = html;
+}
+
+function renderBootstrapReadouts(outputs, s, midUserVal, direction) {
+  const nSims = outputs.draws.length;
+  const userLabel = scale === 'rr' ? 'RR' : 'θ';
+  const nullLabel = scale === 'rr' ? 'RR = 1' : 'θ = 0';
+  const midLabel = `${userLabel} = ${s.formatUserValue(midUserVal)}`;
+
+  // Direction-aware proportion labels: "Below" for protective/positive,
+  // "Above" for harmful/right. The numbers are computed as fraction-below
+  // by the stats function; we flip via 1 − x in the harmful case.
+  const useAbove = direction === 'right';
+  const propNull = useAbove ? 1 - outputs.prop_below_null : outputs.prop_below_null;
+  const propMid  = useAbove ? 1 - outputs.prop_below_mid  : outputs.prop_below_mid;
+  const verbNull = useAbove ? 'above' : 'below';
+  const verbMid  = useAbove ? 'above' : 'below';
+
+  // Sanity-check the bootstrap SE matches the input. Display in user scale
+  // for protective mode is awkward (SE on log scale doesn't map to "X% of RR")
+  // so we show the raw internal-scale value with a small note.
+  const seInput = parseFloat(seNum.value);
+
+  let html = '';
+  html += `<dt class="readout-group-label">Simulation summary (${nSims.toLocaleString()} draws from Normal(β̂, SE²))</dt><dd></dd>`;
+  html += `<dt>Bootstrap SE</dt><dd>${outputs.bootstrap_se.toFixed(3)} <span style="color:var(--ink-faint);font-weight:400">(input SE: ${seInput.toFixed(3)})</span></dd>`;
+  html += `<dt>95% percentile interval</dt><dd>${fmtIntervalUser(outputs.percentile_ci_95, s)}</dd>`;
+
+  html += '<dt class="readout-group-label">Proportions of simulated draws</dt><dd></dd>';
+  html += `<dt>${verbNull.charAt(0).toUpperCase() + verbNull.slice(1)} ${nullLabel}</dt><dd>${fmtPct(propNull)}</dd>`;
+  html += `<dt>${verbMid.charAt(0).toUpperCase() + verbMid.slice(1)} MID (${midLabel})</dt><dd>${fmtPct(propMid)}</dd>`;
+  html += `<dt>Within practical-equivalence region</dt><dd>${fmtPct(outputs.prop_in_rope)}</dd>`;
+  html += `<dt>In opposite meaningful direction</dt><dd>${fmtPct(outputs.prop_meaningful_opposite)}</dd>`;
+
+  bootstrapReadoutsEl.innerHTML = html;
+}
+
+function renderLikelihoodReadouts(outputs, s, midUserVal) {
+  const userLabel = scale === 'rr' ? 'RR' : 'θ';
+  const nullLabel = scale === 'rr' ? 'RR = 1' : 'θ = 0';
+  const midLabel = `${userLabel} = ${s.formatUserValue(midUserVal)}`;
+  const mleUser = s.toUserScale(outputs.mle);
+
+  let html = '';
+  html += '<dt class="readout-group-label">Maximum likelihood estimate</dt><dd></dd>';
+  html += `<dt>MLE (${userLabel})</dt><dd>${s.formatUserValue(mleUser)}</dd>`;
+
+  html += '<dt class="readout-group-label">Likelihood ratios</dt><dd></dd>';
+  html += `<dt>LR(${nullLabel} vs MLE)</dt><dd>${fmtLR(outputs.lr_at_null)} &nbsp; <span style="color:var(--ink-faint);font-weight:400">(data favor MLE)</span></dd>`;
+  html += `<dt>LR(MID = ${s.formatUserValue(midUserVal)} vs MLE)</dt><dd>${fmtLR(outputs.lr_at_mid)} &nbsp; <span style="color:var(--ink-faint);font-weight:400">(data favor MLE)</span></dd>`;
+
+  html += '<dt class="readout-group-label">Support intervals</dt><dd></dd>';
+  html += `<dt>1/8 support interval</dt><dd>${fmtIntervalUser(outputs.support_interval_8, s)}</dd>`;
+  html += `<dt>1/32 support interval</dt><dd>${fmtIntervalUser(outputs.support_interval_32, s)}</dd>`;
+
+  likelihoodReadoutsEl.innerHTML = html;
+}
+
+// Build the 8 "Alternative framings" rows for the table below the main plot.
+// Rows 1–2: Confidence Distribution restatement of the Bayesian P(.) rows
+// (numerically identical under flat prior, different vocabulary).
+// Rows 3–8: Compatibility / Bootstrap / Likelihood at RR=1 and at MID.
+// Bootstrap rows are direction-aware ("below" for protective intervention,
+// "above" for harmful). Compatibility and likelihood rows are direction-
+// invariant (two-sided p-values; z²-based LRs). This function is the single
+// point where these rows' framework-license discipline lives.
+function buildAlternativeFramingsRows({ pZero, pMID, confLabels, compatOutputs, bootOutputs, lhOutputs, midUserVal, s, direction }) {
+  const userLabel = scale === 'rr' ? 'RR' : 'θ';
+  const nullLabel = scale === 'rr' ? 'RR = 1' : 'θ = 0';
+  const midSuffix = ` [${userLabel} = ${s.formatUserValue(midUserVal)}]`;
+  const useAbove = direction === 'right';
+  const propNull = useAbove ? 1 - bootOutputs.prop_below_null : bootOutputs.prop_below_null;
+  const propMid  = useAbove ? 1 - bootOutputs.prop_below_mid  : bootOutputs.prop_below_mid;
+  const verb = useAbove ? 'above' : 'below';
+
+  return [
+    { label: confLabels.cZero, value: fmt(pZero, 3) },
+    { label: confLabels.cMID,  value: fmt(pMID, 3) },
+    { label: `Compatibility at ${nullLabel}`,
+      value: `p = ${fmtP(compatOutputs.compatibility_at_null)} (s ≈ ${fmtSValue(compatOutputs.s_value_null)})` },
+    { label: `Compatibility at MID${midSuffix}`,
+      value: `p = ${fmtP(compatOutputs.compatibility_at_mid)} (s ≈ ${fmtSValue(compatOutputs.s_value_mid)})` },
+    { label: `Bootstrap: % of draws ${verb} ${nullLabel}`,
+      value: fmtPct(propNull) },
+    { label: `Bootstrap: % of draws ${verb} MID${midSuffix}`,
+      value: fmtPct(propMid) },
+    { label: `LR(${nullLabel} vs MLE)`,
+      value: fmtLR(lhOutputs.lr_at_null) },
+    { label: `LR(MID vs MLE)${midSuffix}`,
+      value: fmtLR(lhOutputs.lr_at_mid) },
+  ];
+}
+
+// ──────────────────────────────────────────────────────────────────────────
 // MAIN UPDATE
 // ──────────────────────────────────────────────────────────────────────────
 function update() {
@@ -503,6 +680,13 @@ function update() {
     ciHigh_user = s.toUserScale(freq.ciHigh);
   }
 
+  // Extended-framework outputs are computed once and feed both (a) the
+  // upper Study Estimate Table (as 6 additional rows: compat/boot/LR at
+  // RR=1 and at MID) and (b) the per-framework readouts + plots below.
+  const compatOutputs = compatibilityCurveOutputs(beta_internal, se, mid_internal);
+  const bootOutputs = bootstrapOutputs(beta_internal, se, mid_internal, 10000);
+  const lhOutputs = likelihoodOutputs(beta_internal, se, mid_internal);
+
   currentTableData = buildTableData({
     beta_user: s.toUserScale(beta_internal),
     se,
@@ -513,10 +697,13 @@ function update() {
     dirLabels,
     pZero,
     pMID,
-    confLabels,
     formatV: s.formatUserValue,
   });
+  currentAltFramingsData = buildAlternativeFramingsRows({
+    pZero, pMID, confLabels, compatOutputs, bootOutputs, lhOutputs, midUserVal, s, direction,
+  });
   renderTable(currentTableData);
+  renderAltFramingsTable(currentAltFramingsData);
   updateLegend(dirLabels);
 
   drawPlot(plotEl, {
@@ -530,14 +717,30 @@ function update() {
     scale,
     direction,
     axisScale,
+    showMid,
   });
 
   // Confidence distribution and confidence curve — direction-agnostic
-  // visualizations of the same H(θ) function. Args mirror the main plot
-  // but drop direction (the CD/CC shapes are symmetric around β̂ and don't
-  // depend on which tail is "the desired direction").
+  // visualizations of the same H(θ) function.
   drawConfidenceDistribution(confDistPlotEl, { betaHat: beta_internal, se, mid: mid_internal, scale, axisScale });
   drawConfidenceCurve(confCurvePlotEl, { betaHat: beta_internal, se, mid: mid_internal, scale, axisScale });
+
+  // Extended-framework sections — always visible. Render helpers enforce
+  // framework-specific language discipline (see FRAMEWORKS_TABLE.md).
+  renderCompatibilityReadouts(compatOutputs, s, midUserVal);
+  renderBootstrapReadouts(bootOutputs, s, midUserVal, direction);
+  renderLikelihoodReadouts(lhOutputs, s, midUserVal);
+
+  drawCompatibilityCurve(compatPlotEl, {
+    betaHat: beta_internal, se, mid: mid_internal, scale, axisScale,
+    compatibilityIntervals: compatOutputs.compatibility_intervals,
+  });
+  drawBootstrap(bootstrapPlotEl, {
+    draws: bootOutputs.draws, mid: mid_internal, scale, axisScale,
+  });
+  drawLikelihood(likelihoodPlotEl, {
+    betaHat: beta_internal, se, mid: mid_internal, scale, axisScale,
+  });
 
   // Lower section: multi-prior sensitivity.
   const priorPosteriors = computeAllPriorPosteriors(beta_internal, se, mid_internal);

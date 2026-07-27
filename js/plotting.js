@@ -76,7 +76,7 @@ function computeBounds(centerInternal, spreadInternal, mid, useRRAxis) {
 // ──────────────────────────────────────────────────────────────────────────
 // MAIN POSTERIOR PLOT
 // ──────────────────────────────────────────────────────────────────────────
-export function drawPlot(svgEl, { beta, se, mid, postMean, postSD, isFlat, tau, scale = 'linear', direction = 'right', axisScale = 'log' }) {
+export function drawPlot(svgEl, { beta, se, mid, postMean, postSD, isFlat, tau, scale = 'linear', direction = 'right', axisScale = 'log', showMid = true }) {
   const W = 720, H = 340;
   const M = { top: 32, right: 24, bottom: 36, left: 30 };
   const IW = W - M.left - M.right;
@@ -139,8 +139,12 @@ export function drawPlot(svgEl, { beta, se, mid, postMean, postSD, isFlat, tau, 
   const refBeta = useRRAxis ? Math.exp(beta) : beta;
 
   const leftward = direction === 'left';
-  svg += shadedRegion(refZero, '#d5f4f7', leftward);
-  svg += shadedRegion(refMid,  '#05545a', leftward);
+  if (showMid) {
+    svg += shadedRegion(refZero, '#9fdfe6', leftward);
+    svg += shadedRegion(refMid,  '#05545a', leftward);
+  } else {
+    svg += shadedRegion(refZero, '#05545a', leftward);
+  }
 
   // Optional prior overlay (when not flat). Prior on log scale is Normal(0, τ²);
   // on RR axis it's log-normal centered at 1, with peak at exp(-τ²).
@@ -167,7 +171,7 @@ export function drawPlot(svgEl, { beta, se, mid, postMean, postSD, isFlat, tau, 
   // Reference verticals: zero (null), MID, β̂
   const zeroLabel = scale === 'rr' ? 'RR = 1' : 'θ = 0';
   svg += refVertical(M, IH, xS, refZero, '#20253a', zeroLabel);
-  svg += refVertical(M, IH, xS, refMid, '#e600a0', 'MID');
+  if (showMid) svg += refVertical(M, IH, xS, refMid, '#e600a0', 'MID');
 
   // β̂ marker (drawn last so it sits on top)
   const betaUserVal = scale === 'rr' ? Math.exp(beta) : beta;
@@ -246,6 +250,222 @@ export function drawMultiPlot(svgEl, { posteriors, mid, scale = 'linear', axisSc
   }
 
   // Reference verticals (no β̂ marker — multi-prior view doesn't have a single β̂)
+  const refZero = useRRAxis ? 1 : 0;
+  const refMid  = useRRAxis ? Math.exp(mid) : mid;
+  const zeroLabel = scale === 'rr' ? 'RR = 1' : 'θ = 0';
+  svg += refVertical(M, IH, xS, refZero, '#20253a', zeroLabel);
+  svg += refVertical(M, IH, xS, refMid, '#e600a0', 'MID');
+
+  svgEl.innerHTML = svg;
+}
+
+// ──────────────────────────────────────────────────────────────────────────
+// COMPATIBILITY CURVE (with nested CI bands)
+// ──────────────────────────────────────────────────────────────────────────
+// Same c(θ) = 2·min(H(θ), 1−H(θ)) curve as drawConfidenceCurve, but with
+// nested compatibility-interval bands rendered at the bottom of the chart
+// — visualizing the 50/80/95/99% intervals stacked so the reader sees how
+// CI width depends on the chosen level. Framework-license note: this is
+// a compatibility view, not a CD view — point-wise compatibility, not
+// cumulative confidence.
+export function drawCompatibilityCurve(svgEl, { betaHat, se, mid, scale = 'linear', axisScale = 'log', compatibilityIntervals = {} }) {
+  const W = 720, H = 360; // slightly taller to fit the CI band rail at bottom
+  const M = { top: 32, right: 90, bottom: 64, left: 44 };
+  const IW = W - M.left - M.right;
+  const IH = H - M.top - M.bottom;
+
+  const useRRAxis = (scale === 'rr' && axisScale === 'rr');
+  const { xMin, xMax } = computeBounds(betaHat, se, mid, useRRAxis);
+  const xRange = xMax - xMin;
+  const xS = x => M.left + (x - xMin) / xRange * IW;
+  const yS = y => M.top + IH - y * IH;
+
+  const ccFn = useRRAxis
+    ? rr => { const h = ncdf(Math.log(rr), betaHat, se); return 2 * Math.min(h, 1 - h); }
+    : x  => { const h = ncdf(x, betaHat, se);            return 2 * Math.min(h, 1 - h); };
+
+  let svg = drawXAxis(M, IW, IH, xS, xMin, xMax, scale, useRRAxis);
+
+  // Y axis ticks
+  [0, 0.25, 0.5, 0.75, 1].forEach(y => {
+    const yp = yS(y);
+    svg += '<line x1="' + (M.left - 4) + '" y1="' + yp + '" x2="' + M.left + '" y2="' + yp + '" stroke="#D4D1C7" stroke-width="0.5"/>';
+    svg += '<text x="' + (M.left - 7) + '" y="' + (yp + 4) + '" font-size="10" font-family="JetBrains Mono, monospace" fill="#6B6B7B" text-anchor="end">' + y.toFixed(2) + '</text>';
+  });
+  const yTitleX = M.left - 32, yTitleY = M.top + IH / 2;
+  svg += '<text x="' + yTitleX + '" y="' + yTitleY + '" font-size="11" font-family="T-Star Pro, sans-serif" fill="#6B6B7B" text-anchor="middle" transform="rotate(-90 ' + yTitleX + ' ' + yTitleY + ')">compatibility</text>';
+
+  // Horizontal references at p = 0.05 and p = 0.50
+  const hRefs = [
+    { y: 0.05, label: 'p = 0.05' },
+    { y: 0.5,  label: 'p = 0.50' },
+  ];
+  for (const r of hRefs) {
+    const yp = yS(r.y);
+    svg += '<line x1="' + M.left + '" y1="' + yp + '" x2="' + (M.left + IW) + '" y2="' + yp + '" stroke="#9A9AA8" stroke-width="0.5" stroke-dasharray="3,3"/>';
+    svg += '<text x="' + (M.left + IW + 4) + '" y="' + (yp + 3) + '" font-size="10" font-family="T-Star Pro, sans-serif" fill="#6B6B7B" text-anchor="start">' + r.label + '</text>';
+  }
+
+  // Curve
+  const N = 280;
+  let pd = '';
+  for (let i = 0; i <= N; i++) {
+    const x = xMin + xRange * i / N;
+    pd += (i === 0 ? 'M' : 'L') + ' ' + xS(x) + ' ' + yS(ccFn(x)) + ' ';
+  }
+  svg += '<path d="' + pd + '" stroke="#20253a" fill="none" stroke-width="1.5"/>';
+
+  // Vertical refs at 0/RR=1 and MID
+  const refZero = useRRAxis ? 1 : 0;
+  const refMid  = useRRAxis ? Math.exp(mid) : mid;
+  const zeroLabel = scale === 'rr' ? 'RR = 1' : 'θ = 0';
+  svg += refVertical(M, IH, xS, refZero, '#20253a', zeroLabel);
+  svg += refVertical(M, IH, xS, refMid, '#e600a0', 'MID');
+
+  // Nested compatibility-interval bands at bottom of chart.
+  // Stack four short horizontal bars, narrowest (50%) on top, widest (99%) on bottom.
+  // The visual point: "the 95% CI is this long; the 50% CI is much shorter."
+  const bandRailY = M.top + IH + 24;  // below the x-axis tick labels
+  const bandRowH = 7;
+  const bandLevels = [50, 80, 95, 99]; // narrowest first → widest last (visually stacked downward)
+  const bandColors = { 50: '#5c5161', 80: '#5e93fb', 95: '#05545a', 99: '#e600a0' };
+  bandLevels.forEach((level, idx) => {
+    const interval = compatibilityIntervals[level];
+    if (!interval) return;
+    const [lo, hi] = useRRAxis
+      ? [Math.exp(interval[0]), Math.exp(interval[1])]
+      : interval;
+    const bandY = bandRailY + idx * bandRowH;
+    const x1 = xS(Math.max(lo, xMin));
+    const x2 = xS(Math.min(hi, xMax));
+    svg += '<line x1="' + x1 + '" y1="' + bandY + '" x2="' + x2 + '" y2="' + bandY + '" stroke="' + bandColors[level] + '" stroke-width="3" stroke-linecap="butt"/>';
+    svg += '<text x="' + (M.left + IW + 4) + '" y="' + (bandY + 3) + '" font-size="9" font-family="T-Star Pro, sans-serif" fill="' + bandColors[level] + '" text-anchor="start">' + level + '% CI</text>';
+  });
+
+  svgEl.innerHTML = svg;
+}
+
+// ──────────────────────────────────────────────────────────────────────────
+// BOOTSTRAP HISTOGRAM
+// ──────────────────────────────────────────────────────────────────────────
+// Histogram of parametric-simulation draws. The bins are visibly rectangular
+// (not a smoothed density) so the reader sees this as "resamples" not as a
+// continuous distribution.
+export function drawBootstrap(svgEl, { draws, mid, scale = 'linear', axisScale = 'log' }) {
+  const W = 720, H = 340;
+  const M = { top: 32, right: 24, bottom: 36, left: 30 };
+  const IW = W - M.left - M.right;
+  const IH = H - M.top - M.bottom;
+
+  if (!draws || draws.length === 0) {
+    svgEl.innerHTML = '<text x="' + (W / 2) + '" y="' + (H / 2) + '" font-family="T-Star Pro, sans-serif" font-size="14" fill="#9A9AA8" text-anchor="middle">No draws</text>';
+    return;
+  }
+
+  const useRRAxis = (scale === 'rr' && axisScale === 'rr');
+  // Transform draws to user axis if needed (draws are stored on internal/log scale)
+  const drawsForAxis = useRRAxis ? draws.map(d => Math.exp(d)) : draws;
+
+  // Bounds: empirical 2nd/98th percentile of the visible draws plus reference points.
+  // Avoids extreme tails dominating the visible range.
+  const sorted = [...drawsForAxis].sort((a, b) => a - b);
+  const p02 = sorted[Math.floor(0.02 * sorted.length)];
+  const p98 = sorted[Math.floor(0.98 * sorted.length)];
+  const refZero = useRRAxis ? 1 : 0;
+  const refMid  = useRRAxis ? Math.exp(mid) : mid;
+  let xMin = Math.min(p02, refZero * 0.9, refMid * 0.9);
+  let xMax = Math.max(p98, refZero * 1.1, refMid * 1.1);
+  const xRange = xMax - xMin;
+  const xS = x => M.left + (x - xMin) / xRange * IW;
+
+  // Bin draws
+  const NBINS = 40;
+  const binWidth = xRange / NBINS;
+  const counts = new Array(NBINS).fill(0);
+  for (const d of drawsForAxis) {
+    if (d < xMin || d > xMax) continue;
+    const idx = Math.min(NBINS - 1, Math.max(0, Math.floor((d - xMin) / binWidth)));
+    counts[idx]++;
+  }
+  const maxCount = counts.reduce((a, b) => Math.max(a, b), 1);
+  const yS = c => M.top + IH - (c / maxCount) * IH;
+
+  let svg = drawXAxis(M, IW, IH, xS, xMin, xMax, scale, useRRAxis);
+
+  // Histogram bars
+  for (let i = 0; i < NBINS; i++) {
+    if (counts[i] === 0) continue;
+    const x0 = xS(xMin + i * binWidth);
+    const x1 = xS(xMin + (i + 1) * binWidth);
+    const y0 = yS(counts[i]);
+    const y1 = M.top + IH;
+    svg += '<rect x="' + x0 + '" y="' + y0 + '" width="' + (x1 - x0 - 0.5) + '" height="' + (y1 - y0) + '" fill="#20253a" opacity="0.78"/>';
+  }
+
+  // Vertical references at 0/RR=1 and MID
+  const zeroLabel = scale === 'rr' ? 'RR = 1' : 'θ = 0';
+  svg += refVertical(M, IH, xS, refZero, '#20253a', zeroLabel);
+  svg += refVertical(M, IH, xS, refMid, '#e600a0', 'MID');
+
+  svgEl.innerHTML = svg;
+}
+
+// ──────────────────────────────────────────────────────────────────────────
+// LIKELIHOOD CURVE
+// ──────────────────────────────────────────────────────────────────────────
+// L(θ) ∝ exp(-(θ-β̂)²/(2·SE²)), normalized so peak = 1. Horizontal references
+// at L/L_max = 1/8 and 1/32 — curve crossings give the support intervals.
+export function drawLikelihood(svgEl, { betaHat, se, mid, scale = 'linear', axisScale = 'log' }) {
+  const W = 720, H = 340;
+  const M = { top: 32, right: 80, bottom: 36, left: 44 };
+  const IW = W - M.left - M.right;
+  const IH = H - M.top - M.bottom;
+
+  const useRRAxis = (scale === 'rr' && axisScale === 'rr');
+  const { xMin, xMax } = computeBounds(betaHat, se, mid, useRRAxis);
+  const xRange = xMax - xMin;
+  const xS = x => M.left + (x - xMin) / xRange * IW;
+  const yS = y => M.top + IH - y * IH;
+
+  // Normalized likelihood: L(θ)/L(β̂) = exp(-(θ-β̂)²/(2·SE²))
+  // On RR axis: evaluate at θ = log(rr); the likelihood is not a density,
+  // so no Jacobian — just evaluate the function at the displayed rr.
+  const lhFn = useRRAxis
+    ? rr => { const z = (Math.log(rr) - betaHat) / se; return Math.exp(-(z * z) / 2); }
+    : x  => { const z = (x - betaHat) / se;            return Math.exp(-(z * z) / 2); };
+
+  let svg = drawXAxis(M, IW, IH, xS, xMin, xMax, scale, useRRAxis);
+
+  // Y axis ticks at 0, 0.25, 0.5, 0.75, 1
+  [0, 0.25, 0.5, 0.75, 1].forEach(y => {
+    const yp = yS(y);
+    svg += '<line x1="' + (M.left - 4) + '" y1="' + yp + '" x2="' + M.left + '" y2="' + yp + '" stroke="#D4D1C7" stroke-width="0.5"/>';
+    svg += '<text x="' + (M.left - 7) + '" y="' + (yp + 4) + '" font-size="10" font-family="JetBrains Mono, monospace" fill="#6B6B7B" text-anchor="end">' + y.toFixed(2) + '</text>';
+  });
+  const yTitleX = M.left - 32, yTitleY = M.top + IH / 2;
+  svg += '<text x="' + yTitleX + '" y="' + yTitleY + '" font-size="11" font-family="T-Star Pro, sans-serif" fill="#6B6B7B" text-anchor="middle" transform="rotate(-90 ' + yTitleX + ' ' + yTitleY + ')">L / L_max</text>';
+
+  // Horizontal references at L/L_max = 1/8 and 1/32 (Royall's evidential levels)
+  const hRefs = [
+    { y: 1 / 8,  label: '1/8' },
+    { y: 1 / 32, label: '1/32' },
+  ];
+  for (const r of hRefs) {
+    const yp = yS(r.y);
+    svg += '<line x1="' + M.left + '" y1="' + yp + '" x2="' + (M.left + IW) + '" y2="' + yp + '" stroke="#9A9AA8" stroke-width="0.5" stroke-dasharray="3,3"/>';
+    svg += '<text x="' + (M.left + IW + 4) + '" y="' + (yp + 3) + '" font-size="10" font-family="T-Star Pro, sans-serif" fill="#6B6B7B" text-anchor="start">' + r.label + '</text>';
+  }
+
+  // Likelihood curve
+  const N = 280;
+  let pd = '';
+  for (let i = 0; i <= N; i++) {
+    const x = xMin + xRange * i / N;
+    pd += (i === 0 ? 'M' : 'L') + ' ' + xS(x) + ' ' + yS(lhFn(x)) + ' ';
+  }
+  svg += '<path d="' + pd + '" stroke="#20253a" fill="none" stroke-width="1.5"/>';
+
+  // Vertical references at 0/RR=1 and MID
   const refZero = useRRAxis ? 1 : 0;
   const refMid  = useRRAxis ? Math.exp(mid) : mid;
   const zeroLabel = scale === 'rr' ? 'RR = 1' : 'θ = 0';

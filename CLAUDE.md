@@ -63,6 +63,18 @@ Under Normal likelihood `β̂ ~ Normal(θ, SE²)` and Normal prior `θ ~ Normal(
 
 These three probabilities (`P(θ > MID)`, `P(|θ| < MID)`, `P(θ < -MID)`) sum to 1 and give the ROPE decomposition.
 
+### Five-framework outputs
+
+The tool supports five parallel framings of the same underlying analysis under Gaussian likelihood:
+
+1. **Bayesian (flat prior)** — posterior probabilities `P(θ < X | D)`, credible intervals. Default visible.
+2. **Confidence distribution** — `confidence(θ < X)`, confidence intervals, c(θ) compatibility curve. Default visible.
+3. **Compatibility curve** — point-wise p-values at reference values, nested compatibility intervals at 50/80/95/99%. Opt-in.
+4. **Bootstrap** — parametric simulation from `Normal(β̂, SE²)`, 10,000 draws; proportions of draws beyond thresholds. Opt-in.
+5. **Likelihood inference** — likelihood ratios at reference values, support intervals at 1/8 and 1/32. Opt-in.
+
+All five are mathematically equivalent or near-equivalent under regular Gaussian conditions but license different statement types. See `FRAMEWORKS_TABLE.md` for the full comparison and constraints on what each framework can and cannot claim. The render functions in `js/ui.js` (`renderCompatibilityReadouts`, `renderBootstrapReadouts`, `renderLikelihoodReadouts`) are the single point where framework-license discipline is enforced.
+
 ### Frequentist outputs (independent of prior)
 
 - **t-statistic:** `β̂ / SE`
